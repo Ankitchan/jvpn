@@ -58,6 +58,7 @@ my $cfgpass=$Config{"password"};
 my $workdir=$Config{"workdir"};
 my $password="";
 my $hostchecker=$Config{"hostchecker"};
+my $extra_classpath=$Config{"extra_classpath"} || "";
 my $tncc_pid = 0;
 
 my $supportdir = $ENV{"HOME"}."/.juniper_networks";
@@ -718,7 +719,7 @@ sub tncc_start {
 	my $pid = fork();
 	if ($pid == 0) {
 		my @cmd = ("java");
-		push @cmd, "-classpath", "./tncc.jar";
+		push @cmd, "-classpath", "./tncc.jar";#${extra_classpath}";
 		push @cmd, $found; # class name, could be different
 		if($debug) {
 			push @cmd, "log_level", 10;
