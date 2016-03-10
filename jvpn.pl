@@ -719,7 +719,7 @@ sub tncc_start {
 	my $pid = fork();
 	if ($pid == 0) {
 		my @cmd = ("java");
-		push @cmd, "-classpath", "./tncc.jar";#${extra_classpath}";
+		push @cmd, "-classpath", "./tncc.jar${extra_classpath}";
 		push @cmd, $found; # class name, could be different
 		if($debug) {
 			push @cmd, "log_level", 10;
