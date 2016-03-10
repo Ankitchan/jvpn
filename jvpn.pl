@@ -62,6 +62,7 @@ my $extra_classpath=$Config{"extra_classpath"} || "";
 my $tncc_pid = 0;
 
 my $supportdir = $ENV{"HOME"}."/.juniper_networks";
+my $networkConnectDir = "${supportdir}/network_connect";
 my $narport_file = $supportdir."/narport.txt";
 
 # change directory
@@ -96,11 +97,11 @@ $durl = "url_default" if (!defined($durl));
 # checking if we running under root
 # we need ncsvc to be uid for all modes
 my $is_setuid = 0;
-if (-e "./ncsvc") {
-	my $fmode = (stat("./ncsvc"))[2];
-	$is_setuid = ($fmode & S_ISUID) && ((stat("./ncsvc"))[4] == 0);
-	if(!-x "./ncsvc"){
-		print "./ncsvc is not executable, exiting\n"; 
+if (-e "${networkConnectDir}/ncsvc") {
+	my $fmode = (stat("${networkConnectDir}/ncsvc"))[2];
+	$is_setuid = ($fmode & S_ISUID) && ((stat("${networkConnectDir}/ncsvc"))[4] == 0);
+	if(!-x "${networkConnectDir}/ncsvc"){
+		print "${networkConnectDir}/ncsvc is not executable, exiting\n"; 
 		exit 1;
 	}
 }
@@ -218,9 +219,9 @@ if ($res->is_success) {
 	}
 	# hostchecker authorization stage
 	if($hostchecker) {
-		if(!-e "./tncc.jar") { # download tncc.jar if not exists
+		if(!-e "${networkConnectDir}/tncc.jar") { # download tncc.jar if not exists
 			print "tncc.jar does not exist, downloading from https://$dhost:$dport/dana-cached/hc/tncc.jar\n";
-			my $resdl = $ua->get ("https://$dhost:$dport/dana-cached/hc/tncc.jar",":content_file" => "./tncc.jar");
+			my $resdl = $ua->get ("https://$dhost:$dport/dana-cached/hc/tncc.jar",":content_file" => "${networkConnectDir}/tncc.jar");
 			if (!$resdl->is_success) {
 				print "Unable to download tncc.jar, exiting \n";
 				exit 1;
@@ -365,12 +366,12 @@ elsif($mode eq "ncui") {
 	printf("Saved certificate to temporary file: $crtfile\n");
 }
 
-if (!-e "./$mode") {
-	$res = $ua->get ("https://$dhost:$dport/dana-cached/nc/ncLinuxApp.jar",':content_file' => './ncLinuxApp.jar');
+if (!-e "${networkConnectDir}/$mode") {
+	$res = $ua->get ("https://$dhost:$dport/dana-cached/nc/ncLinuxApp.jar",':content_file' => '${networkConnectDir}/ncLinuxApp.jar');
 	print "Client not exists, downloading from https://$dhost:$dport/dana-cached/nc/ncLinuxApp.jar\n";
 	if ($res->is_success) {
 		print "Done, extracting\n";
-		system("unzip -o ncLinuxApp.jar ncsvc libncui.so && chmod +x ./ncsvc");
+		system("unzip -o ncLinuxApp.jar ncsvc libncui.so && chmod +x ${networkConnectDir}/ncsvc");
 		if($mode eq "ncui") {
 			if(!-e 'wrapper.c'){
 				printf "wrapper.c not found in ".getcwd()."\n";
@@ -378,8 +379,8 @@ if (!-e "./$mode") {
 				exit 1;
 			}
 			printf "Trying to compile 'ncui'. gcc must be installed to make this possible\n";
-			system("gcc -m32 -o ncui wrapper.c -ldl  -Wall >compile.log 2>&1 && chmod +x ./ncui");
-			if (!-e "./ncui") {
+			system("gcc -m32 -o ncui wrapper.c -ldl  -Wall >compile.log 2>&1 && chmod +x ${networkConnectDir}/ncui");
+			if (!-e "${networkConnectDir}/ncui") {
 				printf("Error: Compilation failed, please compile.log\n");
 				exit 1;
 			}
@@ -400,7 +401,7 @@ my $start_t = time;
 my ($socket,$client_socket);
 my $data;
 if($mode eq "ncsvc") {
-	system("./ncsvc >/dev/null 2>/dev/null &");
+	system("${networkConnectDir}/ncsvc >/dev/null 2>/dev/null &");
 	# connecting to ncsvc using TCP
 	$socket = retry_port(4242);
 
@@ -456,7 +457,7 @@ if($mode eq "ncsvc") {
 	
 	if($status ne "6d") {
 		printf("Status=$status\nAuthentication failed, exiting\n");
-		system("./ncsvc -K");
+		system("${networkConnectDir}/ncsvc -K");
 		exit(1);
 	}
 	if($> == 0 && $dnsprotect) {
@@ -473,13 +474,13 @@ if ($mode eq "ncui"){
 	my @oldlist = get_tap_interfaces();
 	my $pid = fork();
 	if ($pid == 0) {
-		my $args = "./ncui\n-p\n\n".
+		my $args = "${networkConnectDir}/ncui\n-p\n\n".
 			"-h\n$dhost\n".
 			"-c\nDSSignInURL=/; DSID=$dsid; DSFirstAccess=$dfirst; DSLastAccess=$dlast; path=/; secure\n".
 			"-f\n$crtfile\n".
 			($debug?"-l\n5\n-L\n5\n":"");
 		$debug && print $args;
-		open(WRITEME, "|-", "./ncui") or die "Couldn't fork: $!\n";
+		open(WRITEME, "|-", "${networkConnectDir}/ncui") or die "Couldn't fork: $!\n";
 		print WRITEME $args;
 		close(WRITEME);
 		printf("ncui terminated\n");
@@ -593,7 +594,7 @@ sub hdump {
 				"   %s%s%s%s %s%s%s%s %s%s%s%s %s%s%s%s   %s\n";
 			
 		} 
-		$data =~ tr/\0-\37\177-\377/./;
+		$data =~ tr/\0-\37\177-\377/${networkConnectDir}/;
 		printf $format,$offset,$offset,@array,$data;
 		$offset += 16;
 	}
@@ -626,7 +627,7 @@ sub INT_handler {
 	$ua -> get ("https://$dhost:$dport/dana-na/auth/logout.cgi");
 	print "Killing ncsvc...\n";
 	# it is suid, so best is to use own api
-	system("./ncsvc -K");
+	system("${networkConnectDir}/ncsvc -K");
 
 	# checking if resolv.conf correctly restored
 	if(-f "/etc/jnpr-nc-resolv.conf"){
@@ -708,7 +709,7 @@ sub tncc_start {
 		my $chkpath = $jclass;
 		$chkpath =~ s/\./\//g;
 		$chkpath.=".class";
-		system("unzip -t ./tncc.jar $chkpath >/dev/null 2>&1");
+		system("unzip -t ${networkConnectDir}/tncc.jar $chkpath >/dev/null 2>&1");
 		$found = $jclass if $? == 0;
 		last if $? == 0;
 	}
@@ -719,7 +720,7 @@ sub tncc_start {
 	my $pid = fork();
 	if ($pid == 0) {
 		my @cmd = ("java");
-		push @cmd, "-classpath", "./tncc.jar${extra_classpath}";
+		push @cmd, "-classpath", "${networkConnectDir}/tncc.jar${extra_classpath}";
 		push @cmd, $found; # class name, could be different
 		if($debug) {
 			push @cmd, "log_level", 10;
