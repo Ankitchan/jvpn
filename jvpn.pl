@@ -11,7 +11,6 @@
 # contributor(s) be liable for damages resulting directly or indirectly from
 # the use or non-use of this software.
 
-
 use strict;
 use warnings;
 use Term::ReadKey;
@@ -65,6 +64,9 @@ my $supportdir = $ENV{"HOME"}."/.juniper_networks";
 my $networkConnectDir = "${supportdir}/network_connect";
 my $narport_file = $supportdir."/narport.txt";
 
+# ensure network_connect directory exists
+mkpath($networkConnectDir) if ! -e $networkConnectDir;
+
 # change directory
 if (defined $workdir){
 	mkpath($workdir) if !-e $workdir;
@@ -93,23 +95,6 @@ else { $cfgpass="interactive"; }
 $hostchecker=0 if !defined($mode);
 # set default url if needed
 $durl = "url_default" if (!defined($durl));
-
-# checking if we running under root
-# we need ncsvc to be uid for all modes
-my $is_setuid = 0;
-if (-e "${networkConnectDir}/ncsvc") {
-	my $fmode = (stat("${networkConnectDir}/ncsvc"))[2];
-	$is_setuid = ($fmode & S_ISUID) && ((stat("${networkConnectDir}/ncsvc"))[4] == 0);
-	if(!-x "${networkConnectDir}/ncsvc"){
-		print "${networkConnectDir}/ncsvc is not executable, exiting\n"; 
-		exit 1;
-	}
-}
-
-if( $> != 0 && !$is_setuid) {
-	print "Please, run this script with su/sudo or set suid attribute on $mode \n";
-	exit 1;
-}
 
 my $ua = LWP::UserAgent->new;
 # on RHEL6 ssl_opts is not exists
@@ -367,11 +352,11 @@ elsif($mode eq "ncui") {
 }
 
 if (!-e "${networkConnectDir}/$mode") {
-	$res = $ua->get ("https://$dhost:$dport/dana-cached/nc/ncLinuxApp.jar",':content_file' => '${networkConnectDir}/ncLinuxApp.jar');
 	print "Client not exists, downloading from https://$dhost:$dport/dana-cached/nc/ncLinuxApp.jar\n";
+	$res = $ua->get ("https://$dhost:$dport/dana-cached/nc/ncLinuxApp.jar",':content_file' => "${networkConnectDir}/ncLinuxApp.jar");
 	if ($res->is_success) {
 		print "Done, extracting\n";
-		system("unzip -o ncLinuxApp.jar ncsvc libncui.so && chmod +x ${networkConnectDir}/ncsvc");
+		system("cd $networkConnectDir && unzip -d ${supportdir} -o ncLinuxApp.jar ncsvc libncui.so && chmod +x ${networkConnectDir}/ncsvc");
 		if($mode eq "ncui") {
 			if(!-e 'wrapper.c'){
 				printf "wrapper.c not found in ".getcwd()."\n";
@@ -387,6 +372,11 @@ if (!-e "${networkConnectDir}/$mode") {
 			else {
 				printf("ncui binary compiled\n");
 			}
+		}
+		print "Enter password to make ncsvc setuid\n";
+		system("sudo install --mode=6711 --owner=root ${supportdir}/ncsvc ${networkConnectDir}/ncsvc");
+		if (! -e "${networkConnectDir}/ncsvc") {
+			die "failed to install ncsvc: $!";
 		}
 	}
 	else {
@@ -703,7 +693,7 @@ sub tncc_start {
 	unlink $narport_file;
 	# users reported at least 2 different class names.
 	# It is not possible to fetch it from web, because it is hardcoded in hclauncer applet
-	my @jclasses = ("net.juniper.tnc.NARPlatform.linux.LinuxHttpNAR","net.juniper.tnc.HttpNAR.HttpNAR");
+	my @jclasses = qw(net.juniper.tnc.NARPlatform.linux.LinuxHttpNAR net.juniper.tnc.HttpNAR.HttpNAR);
 	my $jclass; my $found = '';
 	foreach $jclass (@jclasses) {
 		my $chkpath = $jclass;
