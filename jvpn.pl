@@ -272,11 +272,13 @@ if ($res->is_success) {
 	}
 	# active sessions found
 	if ($response_body =~ /id="DSIDConfirmForm"/) {
-		$response_body =~ m/name="FormDataStr" value="([^"]+)"/;
+		my ($dataStr) = $response_body =~ m/name="FormDataStr" value="([^"]+)"/;
+		my ($postfixSID) = $response_body =~ m/name="postfixSID" value="([^"]+)"/;
 		print "Active sessions found, reconnecting...\n";
 		$res = $ua->post("https://$dhost:$dport/dana-na/auth/$durl/login.cgi",
 			[ btnContinue   => 'Continue the session',
-			FormDataStr  => $1,
+			FormDataStr  => $dataStr,
+			postfixSID  => $postfixSID,
 			]);
 		$response_body=$res->decoded_content;
 	}
