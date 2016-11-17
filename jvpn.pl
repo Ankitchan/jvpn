@@ -541,6 +541,8 @@ if($mode eq "ncsvc") {
 		"\nConnected to $dhost, press CTRL+C to exit\n";
 	# disabling cursor
 	print "\e[?25l";
+	my $lastTx = 0;
+	my $lastRx = 0;
 	while ( 1 ) {
 		#stat query
 		$data="\0\0\0\0\0\0\0\x69\x01\0\0\0\x01\0\0\0\0\0\0\0";
@@ -554,11 +556,26 @@ if($mode eq "ncsvc") {
 		}
 		hdump($data) if $debug;
 		my $now = time - $start_t;
-		# printing RX/TX. This packet also contains encription type,
-		# compression and transport info, but length seems to be variable
-		printf("Duration: %02d:%02d:%02d  Sent: %s\tReceived: %s", 
-			int($now / 3600), int(($now % 3600) / 60), int($now % 60),
-			format_bytes(unpack('x[78]N',$data)), format_bytes(unpack('x[68]N',$data)));
+		eval {
+			my $hours = int($now / 3600);
+			my $minutes = int(($now % 3600) / 60);
+			my $seconds = int($now % 60);
+			my $tx = unpack('x[78]N', $data);
+			my $rx = unpack('x[68]N', $data);
+			printf(
+			  "Duration: %02d:%02d:%02d  Sent: %10s %10s   Received: %10s %10s\e[K",
+			  $hours, $minutes, $seconds,
+			  format_bytes($tx), "(" . format_bytes($tx - $lastTx) . ")",
+			  format_bytes($rx), "(" . format_bytes($rx - $lastRx) . ")");
+			$lastTx = $tx;
+			$lastRx = $rx;
+			1;
+		}
+		or do {
+			print("Something went wrong: $@\n");
+			hdump($data);
+			print("$data\n");
+		};
 		sleep(1);
 	}
 
