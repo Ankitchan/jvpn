@@ -14,6 +14,7 @@
 use strict;
 use warnings;
 use Term::ReadKey;
+use IO::File;
 use IO::Socket::INET;
 use IO::Socket::SSL qw();
 use Fcntl ':mode';
@@ -24,6 +25,7 @@ use HTTP::Cookies;
 use File::Copy;
 use File::Temp;
 use File::Path;
+use Net::Ping;
 use POSIX;
 
 my %Config;
@@ -393,7 +395,7 @@ my $start_t = time;
 my ($socket,$client_socket);
 my $data;
 if($mode eq "ncsvc") {
-	system("${networkConnectDir}/ncsvc >/dev/null 2>/dev/null &");
+	system("${networkConnectDir}/ncsvc >/dev/null  &");
 	# connecting to ncsvc using TCP
 	$socket = retry_port(4242);
 
@@ -545,6 +547,8 @@ if($mode eq "ncsvc") {
 	print "\e[?25l";
 	my $lastTx = 0;
 	my $lastRx = 0;
+	my @gateways = getGateways();
+	my $lines = scalar(@gateways) + 1;
 	while ( 1 ) {
 		#stat query
 		$data="\0\0\0\0\0\0\0\x69\x01\0\0\0\x01\0\0\0\0\0\0\0";
@@ -565,7 +569,7 @@ if($mode eq "ncsvc") {
 			my $tx = unpack('x[78]N', $data);
 			my $rx = unpack('x[68]N', $data);
 			printf(
-			  "Duration: %02d:%02d:%02d  Sent: %10s %10s   Received: %10s %10s\e[K",
+			  "Duration: %02d:%02d:%02d  Sent: %10s %10s   Received: %10s %10s\e[K\n",
 			  $hours, $minutes, $seconds,
 			  format_bytes($tx), "(" . format_bytes($tx - $lastTx) . ")",
 			  format_bytes($rx), "(" . format_bytes($rx - $lastRx) . ")");
@@ -578,6 +582,12 @@ if($mode eq "ncsvc") {
 			hdump($data);
 			print("$data\n");
 		};
+		for my $gateway (@gateways) {
+			print ping($gateway);
+		}
+		for(my $i = 0; $i < $lines; $i++) {
+			system("tput cuu1");
+		}
 		sleep(1);
 	}
 
@@ -585,6 +595,27 @@ if($mode eq "ncsvc") {
 	
 	$socket->close();
 } # mode ncsvc loop
+
+sub ping {
+	my $target = shift;
+	my $result;
+	my $ping = IO::File->new("ping -c 1 $target|");
+	while (<$ping>) {
+		$result = $_ if /icmp_seq/;
+		}
+	return $result || "$target: no response\n";
+}
+
+sub getGateways {
+	my %gateways;
+	my $routes = IO::File->new("/sbin/route -n|");
+	while(<$routes>) {
+		my ($dest, $gateway, $genmask, $flags) = split(/\s+/);
+		$gateways{$gateway} = 1 if $flags eq "UG";
+	}
+	$routes->close();
+	return keys(%gateways)
+}
 
 # for debugging
 sub hdump {
